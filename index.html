@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DistilBERT command & data tagger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --primary-light: #eff6ff;
+            --success: #16a34a;
+            --success-bg: #f0fdf4;
+            --error: #dc2626;
+            --error-bg: #fef2f2;
+            --warning: #d97706;
+            --warning-bg: #fffbeb;
+            --radius: 8px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            line-height: 1.5;
+            padding: 32px 16px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--surface);
+            padding: 20px 24px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            background-color: #f1f5f9;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            background-color: var(--warning-bg);
+            color: var(--warning);
+            border: 1px solid #fef3c7;
+        }
+
+        .status-pill.ok {
+            background-color: var(--success-bg);
+            color: var(--success);
+            border-color: #bbf7d0;
+        }
+
+        .status-pill.error {
+            background-color: var(--error-bg);
+            color: var(--error);
+            border-color: #fecaca;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: currentColor;
+        }
+
+        /* Layout Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        /* Main Workspace */
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-field {
+            flex: 1;
+            padding: 12px 16px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .input-field:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        .input-field:disabled {
+            background-color: #f8fafc;
+            cursor: not-allowed;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            font-weight: 600;
+            font-size: 0.95rem;
+            border: none;
+            padding: 12px 24px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .btn:hover:not(:disabled) { background-color: var(--primary-hover); }
+        .btn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
+
+        /* Results Box */
+        .results-container {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background-color: #f8fafc;
+            overflow: hidden;
+        }
+
+        .results-header {
+            background: #f1f5f9;
+            padding: 10px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .output {
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            white-space: pre-wrap;
+            min-height: 120px;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        /* Sidebar - Supported Intents */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .intent-category {
+            margin-bottom: 12px;
+        }
+
+        .category-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            letter-spacing: 0.05em;
+        }
+
+        .intent-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .intent-tag {
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            background: #f1f5f9;
+            color: var(--text-secondary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .intent-tag:hover {
+            background: var(--primary-light);
+            border-color: #bfdbfe;
+            color: var(--primary);
+        }
+
+        /* Diagnostic Box */
+        .diag-box {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            padding-top: 16px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <header class="header">
+        <div class="header-title">
+            <h1>DistilBERT command & data tagger</h1>
+            <span class="badge">ONNX Runtime Web</span>
+        </div>
+        <div id="status" class="status-pill">
+            <span class="status-dot"></span>
+            <span id="statusText">Initializing Tokenizer...</span>
+        </div>
+    </header>
+
+    <div class="grid">
+        <!-- Main Interactive Workspace -->
+        <main class="card">
+            <div>
+                <div class="section-title">Natural Language Input</div>
+                <div class="input-group">
+                    <input type="text" id="userInput" class="input-field" placeholder="e.g., Please make 'Quarterly earnings' bold..." disabled>
+                    <button id="runBtn" class="btn" disabled>Parse Command</button>
+                </div>
+            </div>
+
+            <div>
+                <div class="section-title">Inference Result</div>
+                <div class="results-container">
+                    <div class="results-header">
+                        <span>MODEL OUTPUT</span>
+                        <span id="executionTime"></span>
+                    </div>
+                    <div id="output" class="output">Waiting for engine initialization...</div>
+                </div>
+            </div>
+
+            <div class="diag-box">
+                <strong>Runtime Details:</strong> Model quantized INT8 | Execution Provider: WASM-SIMD | Max Sequence Length: 64
+            </div>
+        </main>
+
+        <!-- Sidebar: Supported Intents Showcase -->
+        <aside class="card sidebar">
+            <div>
+                <div class="section-title">Supported Capabilities</div>
+                <p style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 16px;">
+                    Click any intent below to populate an example command.
+                </p>
+
+                <!-- Category 1 -->
+                <div class="intent-category">
+                    <div class="category-title">Document Editing</div>
+                    <div class="intent-tags">
+                        <span class="intent-tag" data-example="Add 'Meeting notes' to the end">add_text</span>
+                        <span class="intent-tag" data-example="Delete the phrase confidential data">search_delete</span>
+                        <span class="intent-tag" data-example="Remove the last sentence">prev_sentence_delete</span>
+                        <span class="intent-tag" data-example="Make total revenue bold">bold</span>
+                        <span class="intent-tag" data-example="Italicize the intro section">italic</span>
+                        <span class="intent-tag" data-example="Underline project title">underline</span>
+                    </div>
+                </div>
+
+                <!-- Category 2 -->
+                <div class="intent-category">
+                    <div class="category-title">Navigation</div>
+                    <div class="intent-tags">
+                        <span class="intent-tag" data-example="Open my email inbox">navigate_email</span>
+                        <span class="intent-tag" data-example="Go to direct messages">navigate_dm</span>
+                    </div>
+                </div>
+
+                <!-- Category 3 -->
+                <div class="intent-category">
+                    <div class="category-title">Email Workspace</div>
+                    <div class="intent-tags">
+                        <span class="intent-tag" data-example="Compose new email to Sarah">email_compose</span>
+                        <span class="intent-tag" data-example="Send this email right now">email_send</span>
+                        <span class="intent-tag" data-example="Reply to the last email">email_reply</span>
+                        <span class="intent-tag" data-example="Forward this to marketing team">email_forward</span>
+                        <span class="intent-tag" data-example="Delete this email thread">email_delete</span>
+                        <span class="intent-tag" data-example="Search emails from Alex">email_search</span>
+                    </div>
+                </div>
+
+                <!-- Category 4 -->
+                <div class="intent-category">
+                    <div class="category-title">Direct Messaging</div>
+                    <div class="intent-tags">
+                        <span class="intent-tag" data-example="Send a message to John">dm_send</span>
+                        <span class="intent-tag" data-example="Reply to John's message">dm_reply</span>
+                        <span class="intent-tag" data-example="Delete current message">dm_delete</span>
+                        <span class="intent-tag" data-example="Find chat with Design Team">dm_search</span>
+                    </div>
+                </div>
+
+                <!-- Fallback -->
+                <div class="intent-category">
+                    <div class="category-title">Fallback</div>
+                    <div class="intent-tags">
+                        <span class="intent-tag" data-example="What is the weather today?">unknown</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<script type="module">
+    import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.mjs";
+    import { AutoTokenizer, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+
+    // Runtime Configuration
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/";
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.simd = true;
+    ort.env.wasm.proxy = false;
+
+    env.allowLocalModels = false;
+
+    const INTENTS = [
+        "add_text", "search_delete", "prev_sentence_delete", "bold", "italic", "underline",
+        "navigate_email", "navigate_dm",
+        "email_compose", "email_send", "email_reply", "email_forward", "email_delete", "email_search",
+        "dm_send", "dm_reply", "dm_delete", "dm_search",
+        "unknown"
+    ];
+
+    const MAX_LEN = 64;
+    const MODEL_URL = './models/joint_command_parser_int8.onnx';
+
+    const statusEl     = document.getElementById('status');
+    const statusTextEl = document.getElementById('statusText');
+    const inputEl      = document.getElementById('userInput');
+    const btnEl        = document.getElementById('runBtn');
+    const outputEl     = document.getElementById('output');
+    const execTimeEl   = document.getElementById('executionTime');
+
+    let tokenizer = null;
+    let ortSession = null;
+    let idToToken = null;
+
+    const softmax = (arr) => {
+        const C = Math.max(...arr);
+        const d = arr.map(y => Math.exp(y - C)).reduce((a, b) => a + b);
+        return arr.map(v => Math.exp(v - C) / d);
+    };
+
+    const argmax = (arr) => arr.indexOf(Math.max(...arr));
+
+    function setStatus(msg, kind = '') {
+        statusEl.className = 'status-pill' + (kind ? ' ' + kind : '');
+        statusTextEl.innerText = msg;
+    }
+
+    function buildIdToToken() {
+        idToToken = {};
+        const model = tokenizer.model;
+        const vocab = model?.vocab;
+        if (Array.isArray(vocab)) {
+            vocab.forEach((tok, i) => { if (tok != null) idToToken[i] = tok; });
+        } else if (vocab && typeof vocab === 'object') {
+            for (const [tok, id] of Object.entries(vocab)) idToToken[id] = tok;
+        } else if (model?.tokens_to_ids) {
+            for (const [tok, id] of model.tokens_to_ids) idToToken[id] = tok;
+        }
+    }
+
+    async function init() {
+        try {
+            setStatus("Loading Tokenizer...");
+            tokenizer = await AutoTokenizer.from_pretrained('Xenova/distilbert-base-uncased');
+            buildIdToToken();
+
+            setStatus("Fetching ONNX Model...");
+            const resp = await fetch(MODEL_URL);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching model file.`);
+            
+            const buf = await resp.arrayBuffer();
+            const u8 = new Uint8Array(buf);
+
+            if (u8[0] === 0x3C) throw new Error("Model URL returned HTML instead of ONNX binary.");
+            if (u8.byteLength < 1024) throw new Error("Model file corrupt or empty.");
+
+            setStatus("Compiling WASM Session...");
+            ortSession = await ort.InferenceSession.create(u8, {
+                executionProviders: ['wasm'],
+                graphOptimizationLevel: 'all'
+            });
+
+            setStatus("Ready", "ok");
+            inputEl.disabled = false;
+            btnEl.disabled = false;
+            outputEl.innerText = "Engine initialized. Enter a command above or click any supported intent tag.";
+        } catch (e) {
+            console.error("Init Error:", e);
+            setStatus("Init Failed", "error");
+            outputEl.innerText = `Initialization Error:\n${e.message || String(e)}`;
+        }
+    }
+
+    async function parseCommand() {
+        const text = inputEl.value.trim();
+        if (!text || !ortSession || !tokenizer) return;
+
+        btnEl.disabled = true;
+        outputEl.innerText = "Parsing command intent & entities...";
+        const startTime = performance.now();
+
+        try {
+            const encoded = tokenizer(text, {
+                padding: 'max_length',
+                truncation: true,
+                max_length: MAX_LEN
+            });
+
+            const ids = encoded.input_ids.data;
+            const mask = encoded.attention_mask.data;
+
+            const inputIdsTensor = new ort.Tensor('int64', BigInt64Array.from(ids, x => BigInt(x)), [1, MAX_LEN]);
+            const attentionMaskTensor = new ort.Tensor('int64', BigInt64Array.from(mask, x => BigInt(x)), [1, MAX_LEN]);
+
+            const feeds = {};
+            if (ortSession.inputNames.includes('input_ids')) feeds.input_ids = inputIdsTensor;
+            if (ortSession.inputNames.includes('attention_mask')) feeds.attention_mask = attentionMaskTensor;
+
+            const results = await ortSession.run(feeds);
+
+            // Intent Processing
+            const intentLogits = Array.from(results.intent_logits.data, Number);
+            const intentProbs  = softmax(intentLogits);
+            const intentIdx    = argmax(intentProbs);
+            const confidence   = intentProbs[intentIdx];
+            const finalIntent  = confidence >= 0.65 ? INTENTS[intentIdx] : "unknown";
+
+            // Entity Extraction (NER)
+            const nerLogits = results.ner_logits.data;
+            const numTags   = nerLogits.length / MAX_LEN;
+            const extractedTokens = [];
+
+            for (let i = 0; i < MAX_LEN; i++) {
+                const tokenId = Number(ids[i]);
+                if ([0, 101, 102, 103].includes(tokenId)) continue;
+
+                const idx = i * numTags;
+                const scores = Array.from(nerLogits.slice(idx, idx + numTags), Number);
+                const tag = argmax(scores);
+
+                if (tag > 0) {
+                    extractedTokens.push({ text: idToToken?.[tokenId] ?? '', id: tokenId });
+                }
+            }
+
+            let extractedData = "";
+            for (const tok of extractedTokens) {
+                if (tok.text.startsWith("##")) extractedData += tok.text.slice(2);
+                else extractedData += (extractedData ? " " : "") + tok.text;
+            }
+
+            const duration = (performance.now() - startTime).toFixed(1);
+            execTimeEl.innerText = `${duration} ms`;
+
+            outputEl.innerText = JSON.stringify({
+                input: text,
+                intent: finalIntent,
+                confidence: `${(confidence * 100).toFixed(2)}%`,
+                extracted_data: extractedData || null
+            }, null, 2);
+
+        } catch (e) {
+            console.error("Inference Error:", e);
+            outputEl.innerText = "Inference Failed: " + (e.message || String(e));
+        } finally {
+            btnEl.disabled = false;
+        }
+    }
+
+    // UI Listeners
+    btnEl.addEventListener('click', parseCommand);
+    inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !btnEl.disabled) parseCommand(); });
+
+    // Interactive Intent Pills
+    document.querySelectorAll('.intent-tag').forEach(tag => {
+        tag.addEventListener('click', () => {
+            const exampleText = tag.getAttribute('data-example');
+            if (exampleText) {
+                inputEl.value = exampleText;
+                if (!btnEl.disabled) parseCommand();
+            }
+        });
+    });
+
+    window.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
