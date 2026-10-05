@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DistilBERT command & data tagger</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             --bg-main: #f8fafc;
@@ -29,7 +32,11 @@
             --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -121,7 +128,9 @@
         }
 
         @media (max-width: 900px) {
-            .grid { grid-template-columns: 1fr; }
+            .grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         /* Main Workspace */
@@ -148,10 +157,13 @@
         .input-group {
             display: flex;
             gap: 12px;
+            align-items: flex-start;
+            /* keep buttons at the top */
         }
 
         .input-field {
             flex: 1;
+            min-width: 0;
             padding: 12px 16px;
             font-size: 0.95rem;
             font-family: inherit;
@@ -159,6 +171,10 @@
             border-radius: var(--radius);
             outline: none;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            resize: vertical;
+            /* allow manual vertical resize */
+            line-height: 1.5;
+            vertical-align: top;
         }
 
         .input-field:focus {
@@ -169,6 +185,11 @@
         .input-field:disabled {
             background-color: #f8fafc;
             cursor: not-allowed;
+        }
+
+        .input-field.interim {
+            color: var(--text-muted);
+            font-style: italic;
         }
 
         .btn {
@@ -184,8 +205,106 @@
             white-space: nowrap;
         }
 
-        .btn:hover:not(:disabled) { background-color: var(--primary-hover); }
-        .btn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
+        .btn:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            background-color: #cbd5e1;
+            cursor: not-allowed;
+        }
+
+        /* --- Speech-to-text mic button --- */
+        .btn-mic {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 16px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .btn-mic:hover:not(:disabled) {
+            color: var(--primary);
+            background: var(--primary-light);
+            border-color: #bfdbfe;
+        }
+
+        .btn-mic:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .btn-mic.listening {
+            color: var(--error);
+            background: var(--error-bg);
+            border-color: #fecaca;
+        }
+
+        .btn-mic .mic-icon {
+            flex: none;
+        }
+
+        .btn-mic.listening .mic-icon {
+            animation: mic-pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes mic-pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.18);
+                opacity: 0.65;
+            }
+        }
+
+        .mic-hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+            min-height: 1.1em;
+        }
+
+        .mic-hint.error {
+            color: var(--error);
+        }
+
+        .mic-hint.active {
+            color: var(--error);
+            font-weight: 500;
+        }
+
+        @media (max-width: 620px) {
+            .input-group {
+                flex-wrap: wrap;
+            }
+
+            .input-field {
+                flex: 1 1 100%;
+            }
+
+            .btn-mic {
+                flex: 1 1 auto;
+            }
+
+            .btn {
+                flex: 1 1 auto;
+            }
+        }
 
         /* Results Box */
         .results-container {
@@ -270,300 +389,677 @@
         }
     </style>
 </head>
+
 <body>
 
-<div class="container">
-    <!-- Header -->
-    <header class="header">
-        <div class="header-title">
-            <h1>DistilBERT command & data tagger</h1>
-            <span class="badge">ONNX Runtime Web</span>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-title">
+                <h1>DistilBERT command & data tagger</h1>
+                <span class="badge">ONNX Runtime Web</span>
+            </div>
+            <div id="status" class="status-pill">
+                <span class="status-dot"></span>
+                <span id="statusText">Initializing Tokenizer...</span>
+            </div>
+        </header>
+
+        <div class="grid">
+            <!-- Main Interactive Workspace -->
+            <main class="card">
+                <div>
+                    <div class="section-title">Natural Language Input</div>
+                    <div class="input-group">
+                        <!-- Changed from <input> to <textarea> with rows="3" -->
+                        <textarea id="userInput" class="input-field" rows="3"
+                            placeholder="e.g., Please make 'Quarterly earnings' bold..." disabled></textarea>
+                        <div style="display:flex;gap:16px;flex-direction:column">
+                            <button id="micBtn" class="btn-mic" title="Dictate a command" disabled>
+                                <svg class="mic-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>
+                                <span id="micLabel">Voice</span>
+                            </button>
+
+                            <button id="runBtn" class="btn" disabled>Parse Input</button>
+                        </div>
+                    </div>
+                    <div id="micHint" class="mic-hint"></div>
+                </div>
+
+                <div>
+                    <div class="section-title">Inference Result</div>
+                    <div class="results-container">
+                        <div class="results-header">
+                            <span>MODEL OUTPUT</span>
+                            <span id="executionTime"></span>
+                        </div>
+                        <div id="output" class="output">Waiting for engine initialization...</div>
+                    </div>
+                </div>
+
+                <div class="diag-box">
+                    <strong>Runtime Details:</strong> Model quantized INT8 | Execution Provider: WASM-SIMD | Max
+                    Sequence Length: 64
+                </div>
+            </main>
+
+            <!-- Sidebar: Supported Intents Showcase -->
+            <aside class="card sidebar">
+                <div>
+                    <div class="section-title">Supported Capabilities</div>
+                    <p style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 16px;">
+                        Click any intent below to populate an example command.
+                    </p>
+
+                    <!-- Category 1 -->
+                    <div class="intent-category">
+                        <div class="category-title">Document Editing</div>
+                        <div class="intent-tags">
+                            <span class="intent-tag" data-example="Add 'Meeting notes' to the end">add_text</span>
+                            <span class="intent-tag"
+                                data-example="Delete the phrase confidential data">search_delete</span>
+                            <span class="intent-tag" data-example="Remove the last sentence">prev_sentence_delete</span>
+                            <span class="intent-tag" data-example="Make total revenue bold">bold</span>
+                            <span class="intent-tag" data-example="Italicize the intro section">italic</span>
+                            <span class="intent-tag" data-example="Underline project title">underline</span>
+                        </div>
+                    </div>
+
+                    <!-- Category 2 -->
+                    <div class="intent-category">
+                        <div class="category-title">Navigation</div>
+                        <div class="intent-tags">
+                            <span class="intent-tag" data-example="Open my email inbox">navigate_email</span>
+                            <span class="intent-tag" data-example="Go to direct messages">navigate_dm</span>
+                        </div>
+                    </div>
+
+                    <!-- Category 3 -->
+                    <div class="intent-category">
+                        <div class="category-title">Email Workspace</div>
+                        <div class="intent-tags">
+                            <span class="intent-tag" data-example="Compose new email to Sarah">email_compose</span>
+                            <span class="intent-tag" data-example="Send this email right now">email_send</span>
+                            <span class="intent-tag" data-example="Reply to the last email">email_reply</span>
+                            <span class="intent-tag" data-example="Forward this to marketing team">email_forward</span>
+                            <span class="intent-tag" data-example="Delete this email thread">email_delete</span>
+                            <span class="intent-tag" data-example="Search emails from Alex">email_search</span>
+                        </div>
+                    </div>
+
+                    <!-- Category 4 -->
+                    <div class="intent-category">
+                        <div class="category-title">Direct Messaging</div>
+                        <div class="intent-tags">
+                            <span class="intent-tag" data-example="Send a message to John">dm_send</span>
+                            <span class="intent-tag" data-example="Reply to John's message">dm_reply</span>
+                            <span class="intent-tag" data-example="Delete current message">dm_delete</span>
+                            <span class="intent-tag" data-example="Find chat with Design Team">dm_search</span>
+                        </div>
+                    </div>
+
+                    <!-- Fallback -->
+                    <div class="intent-category">
+                        <div class="category-title">Fallback</div>
+                        <div class="intent-tags">
+                            <span class="intent-tag" data-example="What is the weather today?">unknown</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
-        <div id="status" class="status-pill">
-            <span class="status-dot"></span>
-            <span id="statusText">Initializing Tokenizer...</span>
-        </div>
-    </header>
-
-    <div class="grid">
-        <!-- Main Interactive Workspace -->
-        <main class="card">
-            <div>
-                <div class="section-title">Natural Language Input</div>
-                <div class="input-group">
-                    <input type="text" id="userInput" class="input-field" placeholder="e.g., Please make 'Quarterly earnings' bold..." disabled>
-                    <button id="runBtn" class="btn" disabled>Parse Command</button>
-                </div>
-            </div>
-
-            <div>
-                <div class="section-title">Inference Result</div>
-                <div class="results-container">
-                    <div class="results-header">
-                        <span>MODEL OUTPUT</span>
-                        <span id="executionTime"></span>
-                    </div>
-                    <div id="output" class="output">Waiting for engine initialization...</div>
-                </div>
-            </div>
-
-            <div class="diag-box">
-                <strong>Runtime Details:</strong> Model quantized INT8 | Execution Provider: WASM-SIMD | Max Sequence Length: 64
-            </div>
-        </main>
-
-        <!-- Sidebar: Supported Intents Showcase -->
-        <aside class="card sidebar">
-            <div>
-                <div class="section-title">Supported Capabilities</div>
-                <p style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 16px;">
-                    Click any intent below to populate an example command.
-                </p>
-
-                <!-- Category 1 -->
-                <div class="intent-category">
-                    <div class="category-title">Document Editing</div>
-                    <div class="intent-tags">
-                        <span class="intent-tag" data-example="Add 'Meeting notes' to the end">add_text</span>
-                        <span class="intent-tag" data-example="Delete the phrase confidential data">search_delete</span>
-                        <span class="intent-tag" data-example="Remove the last sentence">prev_sentence_delete</span>
-                        <span class="intent-tag" data-example="Make total revenue bold">bold</span>
-                        <span class="intent-tag" data-example="Italicize the intro section">italic</span>
-                        <span class="intent-tag" data-example="Underline project title">underline</span>
-                    </div>
-                </div>
-
-                <!-- Category 2 -->
-                <div class="intent-category">
-                    <div class="category-title">Navigation</div>
-                    <div class="intent-tags">
-                        <span class="intent-tag" data-example="Open my email inbox">navigate_email</span>
-                        <span class="intent-tag" data-example="Go to direct messages">navigate_dm</span>
-                    </div>
-                </div>
-
-                <!-- Category 3 -->
-                <div class="intent-category">
-                    <div class="category-title">Email Workspace</div>
-                    <div class="intent-tags">
-                        <span class="intent-tag" data-example="Compose new email to Sarah">email_compose</span>
-                        <span class="intent-tag" data-example="Send this email right now">email_send</span>
-                        <span class="intent-tag" data-example="Reply to the last email">email_reply</span>
-                        <span class="intent-tag" data-example="Forward this to marketing team">email_forward</span>
-                        <span class="intent-tag" data-example="Delete this email thread">email_delete</span>
-                        <span class="intent-tag" data-example="Search emails from Alex">email_search</span>
-                    </div>
-                </div>
-
-                <!-- Category 4 -->
-                <div class="intent-category">
-                    <div class="category-title">Direct Messaging</div>
-                    <div class="intent-tags">
-                        <span class="intent-tag" data-example="Send a message to John">dm_send</span>
-                        <span class="intent-tag" data-example="Reply to John's message">dm_reply</span>
-                        <span class="intent-tag" data-example="Delete current message">dm_delete</span>
-                        <span class="intent-tag" data-example="Find chat with Design Team">dm_search</span>
-                    </div>
-                </div>
-
-                <!-- Fallback -->
-                <div class="intent-category">
-                    <div class="category-title">Fallback</div>
-                    <div class="intent-tags">
-                        <span class="intent-tag" data-example="What is the weather today?">unknown</span>
-                    </div>
-                </div>
-            </div>
-        </aside>
     </div>
-</div>
 
-<script type="module">
-    import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.mjs";
-    import { AutoTokenizer, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+    <script type="module">
+        import * as ort from "./vendor/ort.min.mjs";
+        import { AutoTokenizer, env } from "./vendor/transformers.min.js";
 
-    // Runtime Configuration
-    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/";
-    ort.env.wasm.numThreads = 1;
-    ort.env.wasm.simd = true;
-    ort.env.wasm.proxy = false;
+        // Runtime Configuration
+        ort.env.wasm.wasmPaths = {
+            'ort-wasm-simd-threaded.wasm': './vendor/ort-wasm-simd-threaded.wasm',
+            'ort-wasm-simd-threaded.mjs': './vendor/ort-wasm-simd-threaded.mjs',
+            'ort-wasm-simd-threaded.jsep.wasm': './vendor/ort-wasm-simd-threaded.jsep.wasm',
+            'ort-wasm-simd-threaded.jsep.mjs': './vendor/ort-wasm-simd-threaded.jsep.mjs',
+            'ort-wasm-simd.wasm': './vendor/ort-wasm-simd.wasm',
+            'ort-wasm-simd.mjs': './vendor/ort-wasm-simd.mjs',
+            'ort-wasm.wasm': './vendor/ort-wasm.wasm',
+            'ort-wasm.mjs': './vendor/ort-wasm.mjs',
+            'ort-wasm-threaded.wasm': './vendor/ort-wasm-threaded.wasm',
+            'ort-wasm-threaded.mjs': './vendor/ort-wasm-threaded.mjs'
+        };
+        ort.env.wasm.numThreads = 1;
+        ort.env.wasm.simd = true;
+        ort.env.wasm.proxy = false;
 
-    env.allowLocalModels = false;
+        env.allowLocalModels = true;
+        env.allowRemoteModels = false;
+        env.localURL = "./models/";
 
-    const INTENTS = [
-        "add_text", "search_delete", "prev_sentence_delete", "bold", "italic", "underline",
-        "navigate_email", "navigate_dm",
-        "email_compose", "email_send", "email_reply", "email_forward", "email_delete", "email_search",
-        "dm_send", "dm_reply", "dm_delete", "dm_search",
-        "unknown"
-    ];
+        const INTENTS = [
+            "add_text", "search_delete", "prev_sentence_delete", "bold", "italic", "underline",
+            "navigate_email", "navigate_dm",
+            "email_compose", "email_send", "email_reply", "email_forward", "email_delete", "email_search",
+            "dm_send", "dm_reply", "dm_delete", "dm_search",
+            "ai_refine",
+            "unknown"
+        ];
+        const CATEGORIES = [
+            "discussion points",
+            "key meeting objectives",
+            "pipeline deals",
+            "recent relationship developments",
+            "relationship sensitivities"
+        ];
 
-    const MAX_LEN = 64;
-    const MODEL_URL = './models/joint_command_parser_int8.onnx';
+        const MAX_LEN = 64;
+        const MODEL_URL = './models/joint_command_parser_int8.onnx';
 
-    const statusEl     = document.getElementById('status');
-    const statusTextEl = document.getElementById('statusText');
-    const inputEl      = document.getElementById('userInput');
-    const btnEl        = document.getElementById('runBtn');
-    const outputEl     = document.getElementById('output');
-    const execTimeEl   = document.getElementById('executionTime');
+        const statusEl = document.getElementById('status');
+        const statusTextEl = document.getElementById('statusText');
+        const inputEl = document.getElementById('userInput');
+        const btnEl = document.getElementById('runBtn');
+        const outputEl = document.getElementById('output');
+        const execTimeEl = document.getElementById('executionTime');
+        const micBtn = document.getElementById('micBtn');
+        const micLabel = document.getElementById('micLabel');
+        const micHintEl = document.getElementById('micHint');
 
-    let tokenizer = null;
-    let ortSession = null;
-    let idToToken = null;
+        let tokenizer = null;
+        let ortSession = null;
+        let idToToken = null;
 
-    const softmax = (arr) => {
-        const C = Math.max(...arr);
-        const d = arr.map(y => Math.exp(y - C)).reduce((a, b) => a + b);
-        return arr.map(v => Math.exp(v - C) / d);
-    };
+        const softmax = (arr) => {
+            const C = Math.max(...arr);
+            const d = arr.map(y => Math.exp(y - C)).reduce((a, b) => a + b);
+            return arr.map(v => Math.exp(v - C) / d);
+        };
 
-    const argmax = (arr) => arr.indexOf(Math.max(...arr));
+        const argmax = (arr) => arr.indexOf(Math.max(...arr));
 
-    function setStatus(msg, kind = '') {
-        statusEl.className = 'status-pill' + (kind ? ' ' + kind : '');
-        statusTextEl.innerText = msg;
-    }
-
-    function buildIdToToken() {
-        idToToken = {};
-        const model = tokenizer.model;
-        const vocab = model?.vocab;
-        if (Array.isArray(vocab)) {
-            vocab.forEach((tok, i) => { if (tok != null) idToToken[i] = tok; });
-        } else if (vocab && typeof vocab === 'object') {
-            for (const [tok, id] of Object.entries(vocab)) idToToken[id] = tok;
-        } else if (model?.tokens_to_ids) {
-            for (const [tok, id] of model.tokens_to_ids) idToToken[id] = tok;
+        function setStatus(msg, kind = '') {
+            statusEl.className = 'status-pill' + (kind ? ' ' + kind : '');
+            statusTextEl.innerText = msg;
         }
-    }
 
-    async function init() {
-        try {
-            setStatus("Loading Tokenizer...");
-            tokenizer = await AutoTokenizer.from_pretrained('Xenova/distilbert-base-uncased');
-            buildIdToToken();
-
-            setStatus("Fetching ONNX Model...");
-            const resp = await fetch(MODEL_URL);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching model file.`);
-            
-            const buf = await resp.arrayBuffer();
-            const u8 = new Uint8Array(buf);
-
-            if (u8[0] === 0x3C) throw new Error("Model URL returned HTML instead of ONNX binary.");
-            if (u8.byteLength < 1024) throw new Error("Model file corrupt or empty.");
-
-            setStatus("Compiling WASM Session...");
-            ortSession = await ort.InferenceSession.create(u8, {
-                executionProviders: ['wasm'],
-                graphOptimizationLevel: 'all'
-            });
-
-            setStatus("Ready", "ok");
-            inputEl.disabled = false;
-            btnEl.disabled = false;
-            outputEl.innerText = "Engine initialized. Enter a command above or click any supported intent tag.";
-        } catch (e) {
-            console.error("Init Error:", e);
-            setStatus("Init Failed", "error");
-            outputEl.innerText = `Initialization Error:\n${e.message || String(e)}`;
+        function buildIdToToken() {
+            idToToken = {};
+            const model = tokenizer.model;
+            const vocab = model?.vocab;
+            if (Array.isArray(vocab)) {
+                vocab.forEach((tok, i) => { if (tok != null) idToToken[i] = tok; });
+            } else if (vocab && typeof vocab === 'object') {
+                for (const [tok, id] of Object.entries(vocab)) idToToken[id] = tok;
+            } else if (model?.tokens_to_ids) {
+                for (const [tok, id] of model.tokens_to_ids) idToToken[id] = tok;
+            }
         }
-    }
 
-    async function parseCommand() {
-        const text = inputEl.value.trim();
-        if (!text || !ortSession || !tokenizer) return;
+        async function init() {
+            try {
+                setStatus("Loading Tokenizer...");
+                tokenizer = await AutoTokenizer.from_pretrained('Xenova/distilbert-base-uncased');
+                buildIdToToken();
 
-        btnEl.disabled = true;
-        outputEl.innerText = "Parsing command intent & entities...";
-        const startTime = performance.now();
+                setStatus("Fetching ONNX Model...");
+                const resp = await fetch(MODEL_URL);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching model file.`);
 
-        try {
-            const encoded = tokenizer(text, {
-                padding: 'max_length',
-                truncation: true,
-                max_length: MAX_LEN
-            });
+                const buf = await resp.arrayBuffer();
+                const u8 = new Uint8Array(buf);
 
-            const ids = encoded.input_ids.data;
-            const mask = encoded.attention_mask.data;
+                if (u8[0] === 0x3C) throw new Error("Model URL returned HTML instead of ONNX binary.");
+                if (u8.byteLength < 1024) throw new Error("Model file corrupt or empty.");
 
-            const inputIdsTensor = new ort.Tensor('int64', BigInt64Array.from(ids, x => BigInt(x)), [1, MAX_LEN]);
-            const attentionMaskTensor = new ort.Tensor('int64', BigInt64Array.from(mask, x => BigInt(x)), [1, MAX_LEN]);
+                setStatus("Compiling WASM Session...");
+                ortSession = await ort.InferenceSession.create(u8, {
+                    executionProviders: ['wasm'],
+                    graphOptimizationLevel: 'all'
+                });
 
-            const feeds = {};
-            if (ortSession.inputNames.includes('input_ids')) feeds.input_ids = inputIdsTensor;
-            if (ortSession.inputNames.includes('attention_mask')) feeds.attention_mask = attentionMaskTensor;
+                setStatus("Ready", "ok");
+                inputEl.disabled = false;
+                btnEl.disabled = false;
+                outputEl.innerText = "Engine initialized. Enter a command above, dictate it, or click any supported intent tag.";
+            } catch (e) {
+                console.error("Init Error:", e);
+                setStatus("Init Failed", "error");
+                outputEl.innerText = `Initialization Error:\n${e.message || String(e)}`;
+            }
+        }
 
-            const results = await ortSession.run(feeds);
+        /* ============================================================
+           Browser built-in Speech-to-Text (Web Speech API)
+           ============================================================ */
+        const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const speechSupported = Boolean(SpeechRecognitionAPI);
 
-            // Intent Processing
-            const intentLogits = Array.from(results.intent_logits.data, Number);
-            const intentProbs  = softmax(intentLogits);
-            const intentIdx    = argmax(intentProbs);
-            const confidence   = intentProbs[intentIdx];
-            const finalIntent  = confidence >= 0.65 ? INTENTS[intentIdx] : "unknown";
+        let recognition = null;
+        let isListening = false;
+        let finalTranscript = '';   // accumulated final results for current session
+        let autoRunOnFinal = true;  // run the parser once a final result arrives
 
-            // Entity Extraction (NER)
-            const nerLogits = results.ner_logits.data;
-            const numTags   = nerLogits.length / MAX_LEN;
-            const extractedTokens = [];
+        function setMicHint(msg, kind = '') {
+            micHintEl.className = 'mic-hint' + (kind ? ' ' + kind : '');
+            micHintEl.innerText = msg;
+        }
 
-            for (let i = 0; i < MAX_LEN; i++) {
-                const tokenId = Number(ids[i]);
-                if ([0, 101, 102, 103].includes(tokenId)) continue;
+        function setListeningUI(listening) {
+            isListening = listening;
+            micBtn.classList.toggle('listening', listening);
+            micBtn.setAttribute('aria-pressed', String(listening));
+            micLabel.innerText = listening ? 'Listening…' : 'Voice';
+            micBtn.title = listening ? 'Stop listening' : 'Dictate a command';
+        }
 
-                const idx = i * numTags;
-                const scores = Array.from(nerLogits.slice(idx, idx + numTags), Number);
-                const tag = argmax(scores);
+        function initSpeech() {
+            if (!speechSupported) {
+                micBtn.disabled = true;
+                micLabel.innerText = 'No mic API';
+                micBtn.title = 'Speech recognition is not supported in this browser.';
+                setMicHint('Speech recognition is not supported in this browser. Try Chrome, Edge, or Safari.', 'error');
+                return;
+            }
 
-                if (tag > 0) {
-                    extractedTokens.push({ text: idToToken?.[tokenId] ?? '', id: tokenId });
+            recognition = new SpeechRecognitionAPI();
+            recognition.lang = 'en-US';
+            recognition.continuous = false;      // single utterance per click
+            recognition.interimResults = true;   // show live partial transcript
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                finalTranscript = '';
+                setListeningUI(true);
+                inputEl.classList.add('interim');
+                setMicHint('Listening… speak your command.', 'active');
+            };
+
+            recognition.onresult = (event) => {
+                let interim = '';
+                let final = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) final += transcript;
+                    else interim += transcript;
                 }
-            }
 
-            let extractedData = "";
-            for (const tok of extractedTokens) {
-                if (tok.text.startsWith("##")) extractedData += tok.text.slice(2);
-                else extractedData += (extractedData ? " " : "") + tok.text;
-            }
+                if (final) {
+                    finalTranscript += final;
+                    inputEl.classList.remove('interim');
+                    inputEl.value = finalTranscript.trim();
+                    setMicHint('Heard: "' + finalTranscript.trim() + '"');
+                } else if (interim) {
+                    // Live preview while the user is still speaking
+                    inputEl.value = (finalTranscript + interim).trim();
+                }
+            };
 
-            const duration = (performance.now() - startTime).toFixed(1);
-            execTimeEl.innerText = `${duration} ms`;
+            recognition.onerror = (event) => {
+                const map = {
+                    'not-allowed': 'Microphone permission denied. Allow mic access in your browser settings.',
+                    'service-not-allowed': 'Speech service blocked. HTTPS or a supported browser is required.',
+                    'no-speech': 'No speech detected. Try again and speak clearly.',
+                    'audio-capture': 'No microphone found. Check your input device.',
+                    'network': 'Network error reaching the speech service.',
+                    'aborted': '' // user-initiated stop, ignore
+                };
+                const msg = map[event.error] ?? ('Speech error: ' + event.error);
+                if (msg) {
+                    setMicHint(msg, 'error');
+                    console.warn('SpeechRecognition error:', event.error);
+                }
+            };
 
-            outputEl.innerText = JSON.stringify({
-                input: text,
-                intent: finalIntent,
-                confidence: `${(confidence * 100).toFixed(2)}%`,
-                extracted_data: extractedData || null
-            }, null, 2);
+            recognition.onend = () => {
+                setListeningUI(false);
+                inputEl.classList.remove('interim');
 
-        } catch (e) {
-            console.error("Inference Error:", e);
-            outputEl.innerText = "Inference Failed: " + (e.message || String(e));
-        } finally {
-            btnEl.disabled = false;
+                const text = finalTranscript.trim();
+                if (text) {
+                    inputEl.value = text;
+                    setMicHint('Heard: "' + text + '"');
+                    if (autoRunOnFinal && !btnEl.disabled) parseCommand();
+                } else if (!micHintEl.classList.contains('error')) {
+                    setMicHint('No speech captured. Click Voice and try again.');
+                }
+                finalTranscript = '';
+            };
+
+            micBtn.disabled = false;
         }
-    }
 
-    // UI Listeners
-    btnEl.addEventListener('click', parseCommand);
-    inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !btnEl.disabled) parseCommand(); });
+        function startListening() {
+            if (!recognition || isListening) return;
 
-    // Interactive Intent Pills
-    document.querySelectorAll('.intent-tag').forEach(tag => {
-        tag.addEventListener('click', () => {
-            const exampleText = tag.getAttribute('data-example');
-            if (exampleText) {
-                inputEl.value = exampleText;
-                if (!btnEl.disabled) parseCommand();
+            // Clear any stale error styling before a fresh session
+            micHintEl.classList.remove('error');
+            setMicHint('Requesting microphone…');
+
+            try {
+                recognition.start();
+            } catch (err) {
+                // start() throws if the recognizer is already running
+                console.warn('recognition.start() failed:', err);
+                setListeningUI(false);
+            }
+        }
+
+        function stopListening() {
+            if (recognition && isListening) recognition.stop();
+        }
+
+        function toggleListening() {
+            if (isListening) {
+                autoRunOnFinal = false; // manual stop should not auto-parse half a sentence
+                stopListening();
+                setMicHint('Stopped listening.');
+            } else {
+                autoRunOnFinal = true;
+                startListening();
+            }
+        }
+
+        micBtn.addEventListener('click', toggleListening);
+
+        /* ============================================================
+           Inference
+           ============================================================ */
+        async function parseCommand() {
+            const text = inputEl.value.trim();
+            if (!text || !ortSession || !tokenizer) return;
+
+            btnEl.disabled = true;
+            outputEl.innerText = "Parsing command intent, entities & category...";
+
+            const startTime = performance.now();
+
+            try {
+                // ------------------------------------------------------------
+                // Tokenization
+                // ------------------------------------------------------------
+                const encoded = tokenizer(text, {
+                    padding: "max_length",
+                    truncation: true,
+                    max_length: MAX_LEN
+                });
+
+                const ids = encoded.input_ids.data;
+                const mask = encoded.attention_mask.data;
+
+                const inputIdsTensor = new ort.Tensor(
+                    "int64",
+                    BigInt64Array.from(
+                        ids,
+                        x => BigInt(x)
+                    ),
+                    [1, MAX_LEN]
+                );
+
+                const attentionMaskTensor = new ort.Tensor(
+                    "int64",
+                    BigInt64Array.from(
+                        mask,
+                        x => BigInt(x)
+                    ),
+                    [1, MAX_LEN]
+                );
+
+                // ------------------------------------------------------------
+                // ONNX Inputs
+                // ------------------------------------------------------------
+                const feeds = {};
+
+                if (ortSession.inputNames.includes("input_ids")) {
+                    feeds.input_ids = inputIdsTensor;
+                }
+
+                if (ortSession.inputNames.includes("attention_mask")) {
+                    feeds.attention_mask = attentionMaskTensor;
+                }
+
+                // ------------------------------------------------------------
+                // Run ONNX model
+                // ------------------------------------------------------------
+                const results = await ortSession.run(feeds);
+
+
+                /* ============================================================
+                   1. INTENT / COMMAND
+                   ============================================================ */
+
+                const intentLogits = Array.from(
+                    results.intent_logits.data,
+                    Number
+                );
+
+                const intentProbs = softmax(intentLogits);
+
+                const intentIdx = argmax(intentProbs);
+
+                const confidence = intentProbs[intentIdx];
+
+                const finalIntent =
+                    confidence >= 0.65
+                        ? INTENTS[intentIdx]
+                        : "unknown";
+
+
+                /* ============================================================
+                   2. NER / DATA EXTRACTION
+                   ============================================================ */
+
+                const nerLogits = results.ner_logits.data;
+
+                const numTags =
+                    nerLogits.length / MAX_LEN;
+
+                const extractedTokens = [];
+
+                for (let i = 0; i < MAX_LEN; i++) {
+
+                    const tokenId = Number(ids[i]);
+
+                    // Skip special tokens
+                    if ([0, 101, 102, 103].includes(tokenId)) {
+                        continue;
+                    }
+
+                    // Skip padding
+                    if (Number(mask[i]) === 0) {
+                        continue;
+                    }
+
+                    const idx = i * numTags;
+
+                    const scores = Array.from(
+                        nerLogits.slice(
+                            idx,
+                            idx + numTags
+                        ),
+                        Number
+                    );
+
+                    const tag = argmax(scores);
+
+                    // 0 = O
+                    // 1 = B-DATA
+                    // 2 = I-DATA
+                    if (tag > 0) {
+
+                        extractedTokens.push({
+                            text: idToToken?.[tokenId] ?? "",
+                            id: tokenId
+                        });
+                    }
+                }
+
+
+                // ------------------------------------------------------------
+                // Reconstruct DATA string
+                // ------------------------------------------------------------
+
+                let extractedData = "";
+
+                for (const tok of extractedTokens) {
+
+                    if (!tok.text) {
+                        continue;
+                    }
+
+                    if (tok.text.startsWith("##")) {
+
+                        extractedData += tok.text.slice(2);
+
+                    } else {
+
+                        extractedData += (
+                            extractedData
+                                ? " "
+                                : ""
+                        ) + tok.text;
+                    }
+                }
+
+                extractedData = extractedData.trim();
+
+
+                /* ============================================================
+                   3. CATEGORY CLASSIFICATION
+                   ============================================================ */
+
+                let predictedCategory = null;
+                let categoryConfidence = null;
+                let categoryIdx = null;
+
+                // ------------------------------------------------------------
+                // Category is only meaningful when the model has a category
+                // output.
+                // ------------------------------------------------------------
+
+                if (results.category_logits) {
+
+                    const categoryLogits = Array.from(
+                        results.category_logits.data,
+                        Number
+                    );
+
+                    const categoryProbs =
+                        softmax(categoryLogits);
+
+                    categoryIdx =
+                        argmax(categoryProbs);
+
+                    categoryConfidence =
+                        categoryProbs[categoryIdx];
+
+                    predictedCategory =
+                        CATEGORIES[categoryIdx] ?? "unknown";
+                }
+
+
+                /* ============================================================
+                   4. EXECUTION TIME
+                   ============================================================ */
+
+                const duration =
+                    (performance.now() - startTime).toFixed(1);
+
+                execTimeEl.innerText =
+                    `${duration} ms`;
+
+
+                /* ============================================================
+                   5. FINAL OUTPUT
+                   ============================================================ */
+
+                outputEl.innerText = JSON.stringify({
+
+                    input: text,
+
+                    intent: finalIntent,
+
+                    confidence:
+                        `${(confidence * 100).toFixed(2)}%`,
+
+                    extracted_data:
+                        extractedData || null,
+
+                    category:
+                        predictedCategory,
+
+                    category_confidence:
+                        categoryConfidence !== null
+                            ? `${(categoryConfidence * 100).toFixed(2)}%`
+                            : null
+
+                }, null, 2);
+
+
+            } catch (e) {
+
+                console.error(
+                    "Inference Error:",
+                    e
+                );
+
+                outputEl.innerText =
+                    "Inference Failed: " +
+                    (e.message || String(e));
+
+            } finally {
+
+                btnEl.disabled = false;
+            }
+        }
+
+        // UI Listeners
+        btnEl.addEventListener('click', () => {
+            stopListening(); // don't let the mic fight the manual submit
+            parseCommand();
+        });
+
+        // Enter (without Shift) submits; Shift+Enter inserts a newline.
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !btnEl.disabled) {
+                e.preventDefault();
+                stopListening();
+                parseCommand();
             }
         });
-    });
 
-    window.addEventListener('DOMContentLoaded', init);
-</script>
+        // Interactive Intent Pills
+        document.querySelectorAll('.intent-tag').forEach(tag => {
+            tag.addEventListener('click', () => {
+                const exampleText = tag.getAttribute('data-example');
+                if (exampleText) {
+                    stopListening();
+                    inputEl.value = exampleText;
+                    if (!btnEl.disabled) parseCommand();
+                }
+            });
+        });
+
+        // Spacebar shortcut to toggle the mic (when not typing in the input)
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && document.activeElement !== inputEl && speechSupported) {
+                e.preventDefault();
+                toggleListening();
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            init();
+            initSpeech();
+        });
+    </script>
 
 </body>
+
 </html>
